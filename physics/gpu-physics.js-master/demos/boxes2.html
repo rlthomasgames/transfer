@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>gpu-physics.js by schteppe</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="twitter:creator" content="@schteppe"/>
+    <meta property="og:title" content="gpu-physics.js by schteppe"/>
+    <meta property="og:description" content="Play around with a massive amount of rigid bodies in this demo."/>
+    <meta property="og:url" content="https://schteppe.github.io/gpu-physics.js/"/>
+    <meta property="og:type" content="website"/>
+    <meta property="og:image" content="https://schteppe.github.io/gpu-physics.js/gpu-physics.jpg"/>
+
+    <style>
+        body {
+            color: #000000;
+            font-family: "Lucida Grande", sans-serif;
+            font-size: 12px;
+            font-weight: normal;
+            text-align: center;
+            background-color: #000000;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #info {
+            position: absolute;
+            bottom: 0px;
+            width: 100%;
+            padding: 5px;
+        }
+
+        a {
+            color: #000000;
+            font-weight: bold;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="container"></div>
+<div id="info">
+    <b>gpu physics</b> by <a href="http://twitter.com/schteppe">@schteppe</a> | <a
+        href="https://www.youtube.com/watch?v=PfCZEQxTvqA">video</a> | <a
+        href="https://github.com/schteppe/gpu-physics.js">github</a>
+</div>
+
+<script src="../lib/three.min.js"></script>
+<script src="../lib/dat.gui.min.js"></script>
+<script src="../lib/stats.min.js"></script>
+<script src="../lib/three.orbitcontrols.js"></script>
+<script src="../lib/three.transformcontrols.js"></script>
+<script src="../build/gp.js"></script>
+<script src="../build/demo.js"></script>
+<script>
+    cameraPosition = new THREE.Vector3(10, 10, 10);
+
+    boxParticlesCubeRoot = 2;
+
+    worldPhysicalParticleBoundry = {w: 128, h: 16, d: 128};
+    worldPhysicalParticleRadius = 0.05;
+    worldPhysicalThreeBoundry = {
+        w: worldPhysicalParticleBoundry.w * (worldPhysicalParticleRadius*2),
+        h: 1000000,
+        d: worldPhysicalParticleBoundry.d * (worldPhysicalParticleRadius*2)
+    };
+    worldPhysicalThreePosition = {
+        x: -worldPhysicalParticleBoundry.w * (worldPhysicalParticleRadius*2),
+        y: 0,
+        z: -worldPhysicalParticleBoundry.d * (worldPhysicalParticleRadius*2)
+    };
+    physicsWorldProperties = {
+        gravity: new THREE.Vector3(0, -1.6, 0),
+        maxBodies: 64 * 64,
+        maxParticles: 64 * 64,
+        radius: worldPhysicalParticleRadius,
+        stiffness: 64,
+        damping: 0.85,
+        fixedTimeStep: 1 / 60,
+        friction: 2.08,
+        drag: 0.75,
+        boxSize: new THREE.Vector3(worldPhysicalThreeBoundry.w, worldPhysicalThreeBoundry.h, worldPhysicalThreeBoundry.d),
+        gridPosition: new THREE.Vector3(worldPhysicalThreePosition.x, worldPhysicalThreePosition.y, worldPhysicalThreePosition.z),
+        gridResolution: new THREE.Vector3(worldPhysicalParticleBoundry.w, worldPhysicalParticleBoundry.h, worldPhysicalParticleBoundry.z)
+    };
+
+    let demoWorld;
+    let rotation = new THREE.Quaternion();
+    let templateInertia = new THREE.Vector3();
+    //let rotation;
+
+    calculateBoxInertia = (out, mass, extents) => {
+        const c = 1 / 8 * mass;
+        out.set(
+            c * ( 2 * extents.y * 2 * extents.y + 2 * extents.z * 2 * extents.z ),
+            c * ( 2 * extents.x * 2 * extents.x + 2 * extents.z * 2 * extents.z ),
+            c * ( 2 * extents.y * 2 * extents.y + 2 * extents.x * 2 * extents.x )
+        );
+        return out;
+    }
+
+    createPhysics = (renderer) => {
+        physicsWorldProperties['renderer'] = renderer;
+        return new gp.World(physicsWorldProperties);
+    }
+
+    createMaxAmountBoxes = (world) => {
+        const mass = 0.05;
+        const particleDiameter = worldPhysicalParticleRadius * 2;
+        const M = 3;
+        const maxBoxes = Math.floor(world.maxParticles / (boxParticlesCubeRoot * boxParticlesCubeRoot * boxParticlesCubeRoot)) - 6;
+        let count = 0;
+        for (var k = 0; k < 20; k++) {
+            for (var i = 0; i < M; i++) {
+                for (var j = 0; j < M; j++) {
+                    console.log('count', count, count < maxBoxes, maxBoxes);
+                    if (count < maxBoxes) {
+                        count++;
+                        rotation = new THREE.Quaternion()
+                        const boxPos = {
+                            x: (i),
+                            y: (k),
+                            z: (j)
+                        }
+                        let physicalBox = createBox(
+                            world,
+                            boxPos.x,
+                            boxPos.y,
+                            boxPos.z,
+                            mass
+                        );
+                        console.log('box:', physicalBox, boxPos, mass);
+                    } else {
+                        console.log('not creating');
+                    }
+                }
+            }
+        }
+    }
+
+    createBox = (world, x, y, z, mass) => {
+        const pSize = worldPhysicalParticleRadius * 2;
+        const boxSize = pSize * boxParticlesCubeRoot;
+        let body = {
+            bodyId: 'nothing',
+            bodyInertia: templateInertia,
+            initialPos: new THREE.Vector3(x * boxSize*6,y * boxSize*3,z * boxSize*6),
+            bodyRotation: rotation
+        }
+        const axis = new THREE.Vector3(Math.random()*45, Math.random()*45, Math.random()*45);
+        axis.normalize();
+        body.bodyInertia = templateInertia = calculateBoxInertia(templateInertia, mass, new THREE.Vector3(boxSize,boxSize,boxSize)).normalize();
+        body.bodyId = world.addBody(body.initialPos.x, body.initialPos.y, body.initialPos.z, body.bodyRotation.x, body.bodyRotation.y, body.bodyRotation.z, body.bodyRotation.w, mass, body.bodyInertia.x, body.bodyInertia.y, body.bodyInertia.z);
+        for (var i = 0; i < boxParticlesCubeRoot; i++) {
+            for (var j = 0; j < boxParticlesCubeRoot; j++) {
+                for (var k = 0; k < boxParticlesCubeRoot; k++) {
+                    if(i*j*k===0 || (i===boxParticlesCubeRoot-1 || j===boxParticlesCubeRoot-1 || k===boxParticlesCubeRoot-1)){ //Dont fill box
+                        const worldParticle = {
+                            x: ((i) * worldPhysicalParticleRadius*2)-((worldPhysicalParticleRadius*2)*-boxParticlesCubeRoot),
+                            y: ((j) * worldPhysicalParticleRadius*2)-((worldPhysicalParticleRadius*2)*-boxParticlesCubeRoot),
+                            z: ((k) * worldPhysicalParticleRadius*2)-((worldPhysicalParticleRadius*2)*-boxParticlesCubeRoot),
+                        }
+                        console.log('adding particle...', worldParticle, x, y, z);
+                        world.addParticle(body.bodyId,
+                            worldParticle.x*1.1,
+                            worldParticle.y*1.1,
+                            worldParticle.z*1.1
+                        );
+                    }
+                }
+            }
+        }
+        body.bodyRotation = rotation.setFromAxisAngle(axis, -Math.PI*(Math.random()*45));
+        return body;
+    }
+
+    const init = (renderer) => {
+        demoWorld = createPhysics(renderer);
+        demoWorld.setSpherePosition(
+            0,
+            0, 0, 0
+        );
+        createMaxAmountBoxes(demoWorld);
+        return demoWorld;
+    };
+    var demo = new Demo({
+        cameraPosition: cameraPosition,
+        create: init
+    });
+</script>
+</body>
+</html>
